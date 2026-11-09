@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import { ThreeEvent } from '@react-three/fiber'
 import { Line } from '@react-three/drei'
 import { aim, sc, useS } from './store'
+import { isTouch } from './device'
 
 function Part({ geo, pos = [0, 0, 0], scale = [1, 1, 1], rot = [0, 0, 0], color, children }: any) {
   const op = useS(s => s.opacity)
@@ -60,6 +61,8 @@ export function Organ() {
   const S = sc(key), st = S.steps[step], Model = MODELS[key], g = useRef<THREE.Group>(null!)
 
   const on = (e: ThreeEvent<PointerEvent>, first: boolean) => {
+    // No celular, no modo "Girar vista" o dedo só move a câmera
+    if (e.nativeEvent.pointerType === 'touch' && useS.getState().mode === 'cam') return
     e.stopPropagation()
     const s = useS.getState(), surf = e.intersections.find(i => i.object.userData.shell)
     aim.on = !!surf; if (surf) aim.p.copy(surf.point)
@@ -80,6 +83,7 @@ export function Organ() {
           <sphereGeometry args={[0.11, 16, 12]} />
           <meshBasicMaterial color={done.includes(i) ? '#7dd87d' : '#3fd0b0'} transparent depthTest={false}
             opacity={done.includes(i) || (hints && st?.target === i) ? 1 : 0} />
+          {isTouch && <mesh userData={{ t: i }}><sphereGeometry args={[0.24, 12, 8]} /><meshBasicMaterial transparent opacity={0} depthWrite={false} /></mesh>}
         </mesh>))}
       {done.length > 1 && <Line points={done.map(i => S.targets[i])} color="#ffd24a" lineWidth={2} depthTest={false} />}
       {cuts.map((p, i) => <mesh key={i} position={p}><sphereGeometry args={[0.035, 8, 6]} /><meshBasicMaterial color="#ff3b30" depthTest={false} /></mesh>)}

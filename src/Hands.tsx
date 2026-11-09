@@ -4,6 +4,7 @@ import { useFrame } from '@react-three/fiber'
 import { useXR } from '@react-three/xr'
 import { aim, useS } from './store'
 import { TOOLS } from './scenarios'
+import { isTouch } from './device'
 
 // Mãos virtuais (esqueleto com articulações) para PC/celular. Em RA, o @react-three/xr mostra as mãos reais.
 const BONES = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]]
@@ -36,7 +37,7 @@ export function VirtualHands() {
   }, [])
   const o = useMemo(() => ({ rc: new THREE.Raycaster(), v: new THREE.Vector3(), w: new THREE.Vector3(), hp: 0 }), [])
   useFrame(({ camera, pointer }) => {
-    R.visible = L.visible = !inXR; tip.visible = !inXR && aim.on
+    R.visible = L.visible = !inXR && !isTouch; tip.visible = !inXR && aim.on
     if (inXR) return
     o.rc.setFromCamera(pointer, camera)
     const tp = aim.on ? aim.p : o.rc.ray.at(camera.position.distanceTo(TARGET), o.v)
