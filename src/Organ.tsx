@@ -1,16 +1,20 @@
 import { useMemo, useRef } from 'react'
 import * as THREE from 'three'
-import { ThreeEvent } from '@react-three/fiber'
+import { ThreeEvent, useFrame } from '@react-three/fiber'
 import { Line } from '@react-three/drei'
 import { aim, sc, useS } from './store'
 import { isTouch } from './device'
+
+// Plano de corte horizontal (cutplane): cada órgão é fatiado de cima para baixo
+const CLIP = [new THREE.Plane(new THREE.Vector3(0, -1, 0), 1e3)]
+const TMP = new THREE.Vector3()
 
 function Part({ geo, pos = [0, 0, 0], scale = [1, 1, 1], rot = [0, 0, 0], color, children }: any) {
   const op = useS(s => s.opacity)
   return (
     <mesh position={pos} scale={scale} rotation={rot} userData={{ shell: true }}>
       {geo ? <primitive object={geo} attach="geometry" /> : children}
-      <meshPhysicalMaterial color={color} transparent opacity={op} depthWrite={false} roughness={0.5} clearcoat={0.35} />
+      <meshPhysicalMaterial color={color} transparent opacity={op} depthWrite={false} roughness={0.5} clearcoat={0.35} clippingPlanes={CLIP} side={THREE.DoubleSide} />
     </mesh>
   )
 }
@@ -59,6 +63,15 @@ const MODELS = { rim: Rim, coracao: Heart, cerebro: Brain, rosto: Face }
 export function Organ() {
   const key = useS(s => s.key), step = useS(s => s.step), cuts = useS(s => s.cuts), done = useS(s => s.done), hints = useS(s => s.hints)
   const S = sc(key), st = S.steps[step], Model = MODELS[key], g = useRef<THREE.Group>(null!)
+
+  useFrame(() => {
+    const s = useS.getState(), Z = sc(s.key), cur = Z.steps[s.step]
+    CLIP[0].constant = Z.pos[1] + (1.6 - 3.2 * s.cut) * Z.scale
+    let d: number | null = null // distância aproximada (mm) da ponta da ferramenta até o alvo
+    if (cur && aim.on && g.current) { TMP.set(...Z.targets[cur.target]); g.current.localToWorld(TMP); d = Math.round(aim.p.distanceTo(TMP) / Z.scale * 64) }
+    const pv = s.dist
+    if ((d === null) !== (pv === null) || (d !== null && pv !== null && Math.abs(d - pv) >= 2)) useS.setState({ dist: d })
+  })
 
   const on = (e: ThreeEvent<PointerEvent>, first: boolean) => {
     // No celular, no modo "Girar vista" o dedo só move a câmera

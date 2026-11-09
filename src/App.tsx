@@ -5,6 +5,9 @@ import { XR, createXRStore, useXR } from '@react-three/xr'
 import { MOUSE, TOUCH } from 'three'
 import { isTouch, useArSupported } from './device'
 import { MobileUI } from './Mobile'
+import { CT } from './CT'
+import { Cutplane, Nav } from './Widgets'
+
 import { SCENARIOS } from './scenarios'
 import { sc, useS } from './store'
 import { Room } from './Room'
@@ -61,6 +64,7 @@ function Hud({ ar, onAR, err }: { ar: boolean; onAR: () => void; err: string }) 
     <label>Transparência do órgão
       <input type="range" min={10} max={100} value={Math.round(s.opacity * 100)} onChange={e => s.setOpacity(+e.target.value / 100)} /></label>
     <label className="chk"><input type="checkbox" checked={s.hints} onChange={s.toggleHints} />Mostrar dicas (desligue para modo prova)</label>
+    <Cutplane /><Nav /><CT />
     <ol>{S.steps.map((x, i) => <li key={i} className={i < s.step ? 'ok' : i === s.step ? 'on' : ''}>{x.text}</li>)}</ol>
     <div className="msg" role="status">{s.msg || err}</div>
     <button onClick={s.reset}>Reiniciar</button>
@@ -75,7 +79,7 @@ export default function App() {
   const onAR = () => store.enterAR().catch(() => setErr('RA não suportada neste aparelho'))
   return <>
     {isTouch ? <MobileUI ar={ar} onAR={onAR} err={err} /> : <Hud ar={ar} onAR={onAR} err={err} />}
-    <Canvas dpr={[1, 2]} camera={{ position: [0.3, 1.9, 2.6], fov: 50 }}>
+    <Canvas dpr={[1, 2]} onCreated={({ gl }) => { gl.localClippingEnabled = true }} camera={{ position: [0.3, 1.9, 2.6], fov: 50 }}>
       <XR store={store}><Scene /></XR>
     </Canvas>
   </>

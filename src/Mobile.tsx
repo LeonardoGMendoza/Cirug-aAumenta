@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { SCENARIOS, TOOLS } from './scenarios'
 import { sc, useS } from './store'
+import { CT } from './CT'
+import { Cutplane, Nav } from './Widgets'
 
 // Interface para celular: barra no topo (cirurgia + menu), cartão do passo e ferramentas embaixo.
 export function MobileUI({ ar, onAR, err }: { ar: boolean; onAR: () => void; err: string }) {
@@ -17,6 +19,7 @@ export function MobileUI({ ar, onAR, err }: { ar: boolean; onAR: () => void; err
       <label>Transparência do órgão
         <input type="range" min={10} max={100} value={Math.round(s.opacity * 100)} onChange={e => s.setOpacity(+e.target.value / 100)} /></label>
       <label className="chk"><input type="checkbox" checked={s.hints} onChange={s.toggleHints} />Mostrar dicas (desligue para modo prova)</label>
+      <Cutplane /><CT />
       <ol>{S.steps.map((x, i) => <li key={i} className={i < s.step ? 'ok' : i === s.step ? 'on' : ''}>{x.text}</li>)}</ol>
       <div className="m-row">
         <button onClick={() => { s.reset(); setOpen(false) }}>Reiniciar</button>
@@ -28,6 +31,7 @@ export function MobileUI({ ar, onAR, err }: { ar: boolean; onAR: () => void; err
     <div className="m-bottom">
       <div className="m-card" role="status">
         {st ? <><b>Passo {s.step + 1}/{S.steps.length}</b> · {st.text}</> : <b>Cirurgia concluída</b>}
+        <Nav />
         {s.msg && <div className="m-msg">{s.msg}</div>}
       </div>
       <div className="m-mode">

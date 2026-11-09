@@ -7,17 +7,18 @@ export const aim = { p: new Vector3(), on: false } // ponto do órgão sob o cur
 
 interface S {
   key: Scenario['id']; tool: ToolId; step: number; errs: number; t0: number
-  cuts: V3[]; done: number[]; msg: string; opacity: number; hints: boolean; down: boolean; mode: 'cam' | 'use'
+  cuts: V3[]; done: number[]; msg: string; opacity: number; hints: boolean; down: boolean; mode: 'cam' | 'use'; cut: number; dist: number | null
   setKey: (k: Scenario['id']) => void; reset: () => void; setTool: (t: ToolId) => void
-  setMode: (m: 'cam' | 'use') => void; setOpacity: (o: number) => void; toggleHints: () => void; addCut: (p: V3) => void
+  setMode: (m: 'cam' | 'use') => void; setCut: (c: number) => void; setOpacity: (o: number) => void; toggleHints: () => void; addCut: (p: V3) => void
   hit: (first: boolean) => void; miss: () => void
 }
 export const useS = create<S>((set, get) => ({
-  key: 'rim', tool: 'bisturi', step: 0, errs: 0, t0: Date.now(), cuts: [], done: [], msg: '', opacity: 0.45, hints: true, down: false, mode: 'cam',
+  key: 'rim', tool: 'bisturi', step: 0, errs: 0, t0: Date.now(), cuts: [], done: [], msg: '', opacity: 0.45, hints: true, down: false, mode: 'cam', cut: 0, dist: null,
   setKey: k => set({ key: k, step: 0, errs: 0, t0: Date.now(), cuts: [], done: [], msg: '' }),
   reset: () => get().setKey(get().key),
   setTool: t => set({ tool: t, msg: 'Ferramenta: ' + TOOLS.find(x => x.id === t)!.label }),
   setMode: m => set({ mode: m }),
+  setCut: c => set({ cut: c }),
   setOpacity: o => set({ opacity: o }),
   toggleHints: () => set(s => ({ hints: !s.hints })),
   addCut: p => set(s => {
