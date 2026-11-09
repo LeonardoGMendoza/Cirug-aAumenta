@@ -30,7 +30,7 @@ small{display:block;color:var(--mu);margin-top:8px}
 </head>
 <body>
 <div class="hud">
-  <h1>Cirurgia aumentada v3</h1>
+  <h1>Cirurgia aumentada v5</h1>
   <label for="org">Cirurgia</label>
   <select id="org">
     <option value="rim">Rim: pedra nos rins</option>
@@ -127,6 +127,14 @@ function board(){const c=cv(1040,400),x=c.getContext('2d'),st=ORG[key].st,s=st[s
   const L=s?[`Passo ${step+1}/${st.length}`,`Ferramenta: ${LBL[s.k]}`,...wrap(s.x)]:['Cirurgia concluída',$('#msg').textContent];
   L.forEach((t,i)=>x.fillText(t,30,70+i*62));info.material.map=new THREE.CanvasTexture(c);info.material.needsUpdate=true}
 
+// exame flutuante (ilustrativo) acima da cabeça do paciente, como no vídeo
+const ex=new THREE.Mesh(new THREE.PlaneGeometry(1.1,1.1),new THREE.MeshBasicMaterial({transparent:true,opacity:.92}));ex.position.set(-1.6,1.45,.2);rig.add(ex);
+{const c=cv(256,256),x=c.getContext('2d');x.fillStyle='#05090b';x.fillRect(0,0,256,256);x.strokeStyle='#3fd0b0';x.lineWidth=4;x.strokeRect(2,2,252,252);
+ const gr=x.createRadialGradient(128,120,10,128,120,90);gr.addColorStop(0,'#c9d6d8');gr.addColorStop(1,'#3a4a4f');
+ x.fillStyle=gr;x.beginPath();x.ellipse(128,115,70,88,0,0,7);x.fill();
+ x.fillStyle='#05090b';[[100,105],[156,105]].forEach(p=>{x.beginPath();x.ellipse(p[0],p[1],14,10,0,0,7);x.fill()});x.fillRect(122,120,12,34);
+ x.fillStyle='#8fa9ad';x.font='600 18px sans-serif';x.fillText('Tomografia (exemplo)',12,28);ex.material.map=new THREE.CanvasTexture(c)}
+
 // ---------- lógica ----------
 const dg=new THREE.SphereGeometry(.035,8,6),dm=new THREE.MeshBasicMaterial({color:0xff3b30});
 function load(k){
@@ -159,6 +167,7 @@ function tap(first,on){
   }else if(first&&on){errs++;msg('Estrutura errada ✗','#ff6b5e')}
 }
 function act(down,first){
+  hold_=down;
   const b=rc.intersectObjects(btns)[0];if(b){if(first)pick(b.object.userData.id);return}
   const h=surf();tip.visible=!!h;if(h)tip.position.copy(h.point);
   if(!down)return;
@@ -186,6 +195,30 @@ document.body.appendChild(ARButton.createButton(r,{optionalFeatures:['hand-track
 $('#org').onchange=e=>load(e.target.value);
 $('#op').oninput=applyOp;$('#hint').onchange=ui;$('#reset').onclick=()=>load(key);
 addEventListener('resize',()=>{cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();r.setSize(innerWidth,innerHeight)});
+
+// ---------- mãos virtuais (esqueleto com articulações) para PC e celular ----------
+let hold_=false,hp=0;
+const BONES=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+const OPEN=[[0,0],[-.28,.18],[-.42,.32],[-.52,.46],[-.58,.58],[-.15,.48],[-.16,.7],[-.17,.86],[-.17,.98],[0,.5],[0,.74],[0,.92],[0,1.05],[.14,.47],[.15,.69],[.16,.84],[.16,.95],[.27,.42],[.3,.58],[.32,.7],[.33,.8]];
+const PINCH=[[0,0],[-.28,.18],[-.38,.34],[-.4,.5],[-.3,.62],[-.15,.48],[-.17,.68],[-.25,.78],[-.3,.64],[0,.5],[0,.66],[0,.56],[0,.44],[.14,.47],[.15,.62],[.15,.52],[.14,.41],[.27,.42],[.3,.54],[.3,.45],[.29,.36]];
+const HS=.5;
+function makeHand(){
+  const g=new THREE.Group(),
+  sp=OPEN.map(()=>{const m=new THREE.Mesh(new THREE.SphereGeometry(.03,10,8),new THREE.MeshBasicMaterial({color:0xcfe9ee,depthTest:false}));m.renderOrder=9;g.add(m);return m}),
+  geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(BONES.length*6),3));
+  const ln=new THREE.LineSegments(geo,new THREE.LineBasicMaterial({color:0x8fb4bb,depthTest:false}));ln.renderOrder=8;ln.frustumCulled=false;g.add(ln);
+  g.pose=p=>{const P=OPEN.map((o,i)=>[(o[0]+(PINCH[i][0]-o[0])*p)*HS,(o[1]+(PINCH[i][1]-o[1])*p)*HS]);
+    P.forEach((q,i)=>sp[i].position.set(q[0],q[1],0));const a=geo.attributes.position;
+    BONES.forEach(([i,j],k)=>{a.setXYZ(k*2,P[i][0],P[i][1],0);a.setXYZ(k*2+1,P[j][0],P[j][1],0)});a.needsUpdate=true};
+  g.pose(0);scene.add(g);return g}
+const RH=makeHand(),LH=makeHand(),v1=new THREE.Vector3(),v2=new THREE.Vector3();
+function hands(){
+  const x=r.xr.isPresenting;RH.visible=LH.visible=!x;if(x)return;
+  const tp=tip.visible?tip.position:rc.ray.at(cam.position.distanceTo(oc.target),v1);
+  hp+=((hold_?1:0)-hp)*.3;RH.pose(hp);RH.quaternion.copy(cam.quaternion);
+  RH.position.copy(tp).add(v2.set(.085,-.49,0).applyQuaternion(cam.quaternion));
+  LH.pose(0);LH.scale.x=-1;LH.quaternion.copy(cam.quaternion);
+  LH.position.copy(oc.target).add(v2.set(-1.3,-.9,1).applyQuaternion(cam.quaternion))}
 
 // ---------- controle Xbox (Gamepad API) ----------
 const TOOLS=['bisturi','pinca','laser','ponteiro'];
@@ -232,7 +265,7 @@ function pad(){
 
 paint();load('rim');
 r.setAnimationLoop(t=>{
-  pad();
+  pad();hands();
   const st=ORG[key].st;if(step<st.length)tg[st[step].t].scale.setScalar(1+.25*Math.sin(t/200));
   if(r.xr.isPresenting)ctl.forEach(c=>{aim(c);act(c.userData.d,false)});
   oc.update();r.render(scene,cam)});
