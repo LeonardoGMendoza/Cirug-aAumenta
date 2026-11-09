@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Cirurgia Aumentada</title>
 <style>
-:root{--bg:#0e1a1f;--pn:#14262d;--ln:#2a444d;--fg:#e8f1f0;--mu:#8fa9ad;--ac:#3fd0b0;--er:#ff6b5e;color-scheme:dark}
+:root{--bg:#0e1a1f;--pn:#14262d;--ln:#2a444d;--fg:#e8f1f0;--mu:#8fa9ad;--ac:#3fd0b0;color-scheme:dark}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 "Segoe UI",system-ui,sans-serif;overflow:hidden}
 canvas{display:block}
-.hud{position:fixed;top:10px;left:10px;width:min(320px,calc(100vw - 20px));background:var(--pn);border:1px solid var(--ln);border-radius:10px;padding:12px;max-height:calc(100vh - 80px);overflow:auto}
+.hud{position:fixed;top:10px;left:10px;width:min(300px,calc(100vw - 20px));background:var(--pn);border:1px solid var(--ln);border-radius:10px;padding:12px;max-height:calc(100vh - 80px);overflow:auto}
 h1{font:600 17px/1.2 Georgia,serif;margin:0 0 10px}
 label{display:block;color:var(--mu);font-size:13px;margin:8px 0 3px}
 select,input[type=range]{width:100%}
@@ -21,124 +21,220 @@ li.ok{border-color:#3f8f6f;text-decoration:line-through}
 #msg{margin-top:8px;min-height:22px;font-weight:600}
 button.r{margin-top:8px;background:none;color:var(--fg);border:1px solid var(--ln);border-radius:6px;padding:7px 12px;font-size:14px}
 button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
-.chk{display:flex;gap:8px;align-items:center;margin-top:8px;color:var(--mu);font-size:13px}
+.chk{display:flex;gap:8px;align-items:center;margin-top:8px}
+.chk label{margin:0}
+small{display:block;color:var(--mu);margin-top:8px}
+@media (pointer:coarse){.hud{max-height:36vh;font-size:13px;padding:8px}small{display:none}}
 </style>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 </head>
 <body>
-<div class="hud" id="hud">
-  <h1>Cirurgia aumentada</h1>
+<div class="hud">
+  <h1>Cirurgia aumentada v3</h1>
   <label for="org">Cirurgia</label>
   <select id="org">
     <option value="rim">Rim: pedra nos rins</option>
     <option value="coracao">Coração: ponte coronária</option>
     <option value="cerebro">Cérebro: tumor</option>
-    <option value="rosto">Rosto: implante de silicone</option>
+    <option value="rosto">Plástica: implante de silicone no rosto</option>
   </select>
-  <label for="op">Transparência da camada externa</label>
+  <label for="op">Transparência do órgão</label>
   <input id="op" type="range" min="10" max="100" value="45">
-  <div class="chk"><input id="hint" type="checkbox" checked><label for="hint" style="margin:0">Mostrar dicas (desligue para modo prova)</label></div>
+  <div class="chk"><input id="hint" type="checkbox" checked><label for="hint">Mostrar dicas (desligue para modo prova)</label></div>
   <ol id="steps"></ol>
   <div id="msg" role="status"></div>
   <button class="r" id="reset">Reiniciar</button>
+  <small>Mouse: botão esquerdo usa a ferramenta (arraste com o bisturi para cortar), direito gira, roda dá zoom.</small>
+  <small>Controle Xbox (aperte qualquer botão uma vez): analógico esquerdo move o cursor, A usa/corta, RB e LB trocam de ferramenta, analógico direito gira, LT e RT dão zoom, B reinicia.</small>
 </div>
 <script type="module">
 import * as THREE from 'three';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {ARButton} from 'three/addons/webxr/ARButton.js';
+import {XRHandModelFactory} from 'three/addons/webxr/XRHandModelFactory.js';
 
 const $=s=>document.querySelector(s);
 const scene=new THREE.Scene(),BG=new THREE.Color(0x0e1a1f);scene.background=BG;
-const cam=new THREE.PerspectiveCamera(50,innerWidth/innerHeight,.01,100);cam.position.set(0,.4,3.6);
+const cam=new THREE.PerspectiveCamera(50,innerWidth/innerHeight,.01,100);cam.position.set(.6,1.9,5);
 const r=new THREE.WebGLRenderer({antialias:true,alpha:true});
 r.setPixelRatio(devicePixelRatio);r.setSize(innerWidth,innerHeight);r.xr.enabled=true;document.body.prepend(r.domElement);
 scene.add(new THREE.HemisphereLight(0xffffff,0x223344,1.1));
 const dl=new THREE.DirectionalLight(0xffffff,1.6);dl.position.set(2,3,3);scene.add(dl);
-const oc=new OrbitControls(cam,r.domElement);oc.enableDamping=true;
+const oc=new OrbitControls(cam,r.domElement);oc.enableDamping=true;oc.target.set(.6,0,0);
+oc.mouseButtons={LEFT:null,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.ROTATE};
+oc.touches={ONE:null,TWO:THREE.TOUCH.DOLLY_ROTATE};
 const rig=new THREE.Group();scene.add(rig);
 
-// ---------- modelos procedurais ----------
+// ---------- paciente na mesa ----------
+const pm=new THREE.MeshStandardMaterial({color:0x5b7480,roughness:.8,transparent:true,opacity:.5});
+const body=(g,p,rot=[0,0,0])=>{const m=new THREE.Mesh(g,pm);m.position.set(...p);m.rotation.set(...rot);rig.add(m)};
+const tb=new THREE.Mesh(new THREE.BoxGeometry(5.6,.15,1.7),new THREE.MeshStandardMaterial({color:0x2a444d}));tb.position.set(.4,-1.2,0);rig.add(tb);
+body(new THREE.CapsuleGeometry(.62,1.5,8,24),[.2,-.55,0],[0,0,Math.PI/2]);
+body(new THREE.SphereGeometry(.42,32,24),[-1.4,-.55,0]);
+body(new THREE.CapsuleGeometry(.25,1.6,8,16),[2.3,-.7,.3],[0,0,Math.PI/2]);
+body(new THREE.CapsuleGeometry(.25,1.6,8,16),[2.3,-.7,-.3],[0,0,Math.PI/2]);
+
+// ---------- órgãos procedurais ----------
 let shells=[];
 const mat=(c,o)=>new THREE.MeshPhysicalMaterial({color:c,roughness:.5,clearcoat:.35,transparent:true,opacity:o,depthWrite:false});
-const sh=(geo,c)=>{const m=mat(c,.45);shells.push(m);return new THREE.Mesh(geo,m)};
+const sh=(geo,c)=>{const m=new THREE.Mesh(geo,mat(c,.45));shells.push(m.material);return m};
 const S=(rad,x,y,z,c,p=[0,0,0])=>{const m=sh(new THREE.SphereGeometry(rad,48,32),c);m.scale.set(x,y,z);m.position.set(...p);return m};
 const C=(rt,rb,h,c,p,rot=[0,0,0])=>{const m=sh(new THREE.CylinderGeometry(rt,rb,h,24),c);m.position.set(...p);m.rotation.set(...rot);return m};
 
 const ORG={
- rim:{
-  build:g=>{g.add(S(1,1,1.3,.6,0xa5483e));g.add(C(.1,.14,1,0xe3b562,[.7,-.3,0],[0,0,1.2]));g.add(C(.14,.14,1,0x5a78b0,[.55,.35,0],[0,0,1.4]))},
-  tg:[[0,-.1,.57],[.15,-.2,.15]],
-  st:[{t:0,x:'Marque o ponto de acesso na superfície do rim'},{t:1,x:'Alcance o cálculo renal (a pedra)'},{t:1,x:'Fragmente a pedra com o laser'}]},
- coracao:{
+ rim:{at:[.4,.6,.1,.55],
+  build:g=>{const m=S(1,.8,1.3,.55,0xa5483e);const p=m.geometry.attributes.position;
+   for(let i=0;i<p.count;i++){const x=p.getX(i),y=p.getY(i);if(x>0)p.setX(i,x*(1-.5*Math.exp(-y*y*8)))}
+   m.geometry.computeVertexNormals();g.add(m);g.add(C(.1,.14,.9,0xe3b562,[.5,-.8,0],[0,0,.3]));g.add(C(.12,.12,.8,0x5a78b0,[.55,.2,0],[0,0,1.45]))},
+  tg:[[-.2,.2,.48],[.15,-.25,.1]],
+  st:[{t:0,k:'bisturi',x:'Corte o flanco sobre o ponto marcado (arraste o bisturi)'},{t:1,k:'pinca',x:'Avance a pinça até o cálculo renal'},{t:1,k:'laser',x:'Fragmente a pedra com o laser'}]},
+ coracao:{at:[-.35,.6,0,.5],
   build:g=>{g.add(S(1,.95,1.1,.85,0xb5303a));g.add(C(.18,.22,.9,0xd9a0a0,[.2,1.15,0],[0,0,-.3]));g.add(C(.14,.14,.8,0x4a6fa5,[-.45,1.1,-.1]))},
   tg:[[.35,.25,.75],[.55,-.2,.65],[-.3,.1,.7]],
-  st:[{t:0,x:'Localize a artéria coronária obstruída'},{t:1,x:'Posicione o enxerto da ponte, após a obstrução'},{t:2,x:'Confira a válvula'}]},
- cerebro:{
+  st:[{t:0,k:'bisturi',x:'Abra o acesso sobre a artéria obstruída (arraste o bisturi)'},{t:1,k:'pinca',x:'Posicione o enxerto da ponte'},{t:2,k:'ponteiro',x:'Confira a válvula com o ponteiro'}]},
+ cerebro:{at:[-1.4,.45,0,.5],
   build:g=>{const m=S(1,1.1,.9,1.3,0xd7a3a8);const p=m.geometry.attributes.position;
-   for(let i=0;i<p.count;i++){const x=p.getX(i),y=p.getY(i),z=p.getZ(i);const k=1+.05*Math.sin(x*9)*Math.sin(y*8+z*6);p.setXYZ(i,x*k,y*k,z*k)}
+   for(let i=0;i<p.count;i++){const x=p.getX(i),y=p.getY(i),z=p.getZ(i),k=1+.05*Math.sin(x*9)*Math.sin(y*8+z*6);p.setXYZ(i,x*k,y*k,z*k)}
    m.geometry.computeVertexNormals();g.add(m);g.add(S(.45,1,.7,1,0xc48a90,[0,-.6,-.9]));g.add(C(.14,.12,.8,0xc48a90,[0,-.85,-.3],[.4,0,0]))},
   tg:[[0,.85,.3],[.3,.1,.1]],
-  st:[{t:0,x:'Marque o ponto de entrada (craniotomia)'},{t:1,x:'Avance pela trajetória até o tumor'},{t:1,x:'Ressecte o tumor'}]},
- rosto:{
+  st:[{t:0,k:'bisturi',x:'Incisão no ponto de entrada (arraste o bisturi)'},{t:1,k:'ponteiro',x:'Siga a trajetória até o tumor com o ponteiro'},{t:1,k:'laser',x:'Ressecte o tumor com o laser'}]},
+ rosto:{at:[-1.4,.45,0,.5],
   build:g=>{g.add(S(1,.8,1.05,.85,0xe0b090));g.add(C(0,.13,.4,0xe0b090,[0,-.05,.85],[Math.PI/2,0,0]));
    [-.3,.3].forEach(x=>g.add(S(.08,1,1,1,0x222222,[x,.2,.78])))},
   tg:[[-.55,-.15,.6],[.55,-.15,.6],[0,-.05,.97]],
-  st:[{t:0,x:'Posicione o implante de silicone malar esquerdo'},{t:1,x:'Posicione o implante malar direito'},{t:2,x:'Confira a simetria (toque o nariz)'}]}
+  st:[{t:0,k:'bisturi',x:'Incisão para o implante malar esquerdo (arraste o bisturi)'},{t:0,k:'pinca',x:'Posicione o implante de silicone esquerdo'},{t:1,k:'pinca',x:'Posicione o implante de silicone direito'},{t:2,k:'ponteiro',x:'Confira a simetria tocando o nariz'}]}
 };
 
-// ---------- estado da cirurgia ----------
-let key='rim',grp,tg=[],step=0,errs=0,t0=0,last=null;
-const mk=c=>new THREE.MeshBasicMaterial({color:c,transparent:true,depthTest:false});
+// ---------- ferramentas e painel flutuante ----------
+const B=[['bisturi','Bisturi'],['pinca','Pinça'],['laser','Laser'],['ponteiro','Ponteiro'],['f90','Opaco'],['f45','Translúcido'],['f15','Raio-x']];
+const LBL={bisturi:'Bisturi',pinca:'Pinça',laser:'Laser',ponteiro:'Ponteiro'};
+const TC={bisturi:0xff6b5e,pinca:0xdddddd,laser:0x66ccff,ponteiro:0xffd24a};
+let tool='bisturi',key,grp,tg=[],step=0,errs=0,t0=0,last=null,lastCut=null;
+const tip=new THREE.Mesh(new THREE.ConeGeometry(.04,.22,12).translate(0,-.11,0),new THREE.MeshBasicMaterial({color:TC.bisturi}));
+tip.rotation.x=Math.PI;tip.visible=false;scene.add(tip);
+const btns=B.map(([id,n],i)=>{const m=new THREE.Mesh(new THREE.PlaneGeometry(1.1,.31),new THREE.MeshBasicMaterial());
+  m.position.set(2.9,1.1-i*.38,.3);m.userData={id,n};rig.add(m);return m});
+const cv=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c};
+function paint(){btns.forEach(m=>{const on=m.userData.id==tool,c=cv(256,72),x=c.getContext('2d');
+  x.fillStyle=on?'#3fd0b0':'#14262d';x.fillRect(0,0,256,72);x.strokeStyle='#3fd0b0';x.lineWidth=4;x.strokeRect(2,2,252,68);
+  x.fillStyle=on?'#0e1a1f':'#e8f1f0';x.font='600 30px sans-serif';x.textAlign='center';x.fillText(m.userData.n,128,48);
+  m.material.map=new THREE.CanvasTexture(c);m.material.needsUpdate=true})}
+const info=new THREE.Mesh(new THREE.PlaneGeometry(2.6,1),new THREE.MeshBasicMaterial({transparent:true}));info.position.set(.6,1.9,-.3);rig.add(info);
+const wrap=t=>t.match(/.{1,30}(\s|$)/g)||[t];
+function board(){const c=cv(1040,400),x=c.getContext('2d'),st=ORG[key].st,s=st[step];
+  x.fillStyle='#14262d';x.fillRect(0,0,1040,400);x.strokeStyle='#3fd0b0';x.lineWidth=6;x.strokeRect(3,3,1034,394);
+  x.fillStyle='#e8f1f0';x.font='600 44px sans-serif';
+  const L=s?[`Passo ${step+1}/${st.length}`,`Ferramenta: ${LBL[s.k]}`,...wrap(s.x)]:['Cirurgia concluída',$('#msg').textContent];
+  L.forEach((t,i)=>x.fillText(t,30,70+i*62));info.material.map=new THREE.CanvasTexture(c);info.material.needsUpdate=true}
 
+// ---------- lógica ----------
+const dg=new THREE.SphereGeometry(.035,8,6),dm=new THREE.MeshBasicMaterial({color:0xff3b30});
 function load(k){
-  key=k;if(grp)rig.remove(grp);shells=[];grp=new THREE.Group();ORG[k].build(grp);rig.add(grp);
-  tg=ORG[k].tg.map(p=>{const m=new THREE.Mesh(new THREE.SphereGeometry(.11,16,12),mk(0x3fd0b0));m.position.set(...p);m.renderOrder=5;grp.add(m);return m});
-  step=0;errs=0;last=null;t0=Date.now();applyOp();ui();$('#msg').textContent='';
-}
+  key=k;if(grp)rig.remove(grp);shells=[];grp=new THREE.Group();const o=ORG[k];o.build(grp);
+  grp.position.set(...o.at.slice(0,3));grp.scale.setScalar(o.at[3]);rig.add(grp);
+  tg=o.tg.map(p=>{const m=new THREE.Mesh(new THREE.SphereGeometry(.11,16,12),new THREE.MeshBasicMaterial({color:0x3fd0b0,transparent:true,depthTest:false}));m.position.set(...p);m.renderOrder=5;grp.add(m);return m});
+  step=0;errs=0;last=null;lastCut=null;t0=Date.now();applyOp();ui();msg('','')}
 function applyOp(){const o=$('#op').value/100;shells.forEach(m=>m.opacity=o)}
-function ui(){
-  const st=ORG[key].st;
+function ui(){const st=ORG[key].st;
   $('#steps').innerHTML=st.map((s,i)=>`<li class="${i<step?'ok':i==step?'on':''}">${s.x}</li>`).join('');
-  tg.forEach((t,i)=>{const cur=step<st.length&&st[step].t==i;t.material.opacity=(cur&&$('#hint').checked)?1:0});
-}
+  tg.forEach((t,i)=>{if(t.userData.done)return;const cur=step<st.length&&st[step].t==i;t.material.opacity=(cur&&$('#hint').checked)?1:0});board()}
 function msg(t,c){const m=$('#msg');m.textContent=t;m.style.color=c}
+function pick(id){if(id[0]=='f'){$('#op').value=id.slice(1);applyOp();return}
+  tool=id;tip.material.color.set(TC[id]);paint();msg('Ferramenta: '+LBL[id],'#e8f1f0')}
+function cut(lp){if(lastCut&&lastCut.distanceTo(lp)<.06)return;lastCut=lp.clone();
+  const d=new THREE.Mesh(dg,dm);d.userData.c=1;d.position.copy(lp);d.scale.setScalar(1/grp.scale.x);grp.add(d)}
 
 const rc=new THREE.Raycaster();
-function tap(){
-  const st=ORG[key].st;if(step>=st.length)return;
-  const t=tg[st[step].t];
+const surf=()=>rc.intersectObject(grp,true).find(h=>!tg.includes(h.object)&&!h.object.userData.c);
+function tap(first,on){
+  const st=ORG[key].st;if(step>=st.length)return;const s=st[step],t=tg[s.t];
   if(rc.intersectObject(t).length){
-    t.material.color.set(0x7dd87d);t.material.opacity=.9;
-    if(last&&last!==t){grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([last.position,t.position]),new THREE.LineBasicMaterial({color:0xffd24a,depthTest:false})))}
+    if(tool!=s.k){if(first)msg('Use '+LBL[s.k]+' neste passo','#ffd24a');return}
+    t.userData.done=1;t.material.color.set(0x7dd87d);t.material.opacity=.9;
+    if(last&&last!==t)grp.add(Object.assign(new THREE.Line(new THREE.BufferGeometry().setFromPoints([last.position,t.position]),new THREE.LineBasicMaterial({color:0xffd24a,depthTest:false})),{userData:{c:1}}));
     last=t;step++;ui();
-    if(step>=st.length){const s=Math.round((Date.now()-t0)/1000);msg(`Concluída em ${s}s, ${errs} erro(s). Nota: ${Math.max(0,100-errs*10)}`,'#7dd87d')}
+    if(step>=st.length)msg(`Concluída em ${Math.round((Date.now()-t0)/1000)}s, ${errs} erro(s). Nota: ${Math.max(0,100-errs*10)}`,'#7dd87d');
     else msg('Correto ✓','#7dd87d');
-  }else if(rc.intersectObject(grp,true).some(h=>!tg.includes(h.object))){errs++;msg('Estrutura errada ✗','#ff6b5e')}
+    board();
+  }else if(first&&on){errs++;msg('Estrutura errada ✗','#ff6b5e')}
 }
+function act(down,first){
+  const b=rc.intersectObjects(btns)[0];if(b){if(first)pick(b.object.userData.id);return}
+  const h=surf();tip.visible=!!h;if(h)tip.position.copy(h.point);
+  if(!down)return;
+  if(h&&tool=='bisturi')cut(grp.worldToLocal(h.point.clone()));
+  tap(first,!!h)}
 
-// ---------- entrada: mouse/toque e controles de RA ----------
-let d0;
-r.domElement.addEventListener('pointerdown',e=>d0=[e.clientX,e.clientY]);
-r.domElement.addEventListener('pointerup',e=>{
-  if(r.xr.isPresenting||!d0||Math.hypot(e.clientX-d0[0],e.clientY-d0[1])>6)return;
-  rc.setFromCamera(new THREE.Vector2(e.clientX/innerWidth*2-1,-(e.clientY/innerHeight)*2+1),cam);tap()});
-[0,1].forEach(i=>{
-  const c=r.xr.getController(i);
+// ---------- entrada: mouse/toque, controles e mãos ----------
+let dn=false;const el=r.domElement;
+const ray=e=>rc.setFromCamera(new THREE.Vector2(e.clientX/innerWidth*2-1,-e.clientY/innerHeight*2+1),cam);
+el.addEventListener('pointerdown',e=>{if(e.button||r.xr.isPresenting)return;dn=true;ray(e);act(true,true)});
+el.addEventListener('pointermove',e=>{if(r.xr.isPresenting)return;ray(e);act(dn,false)});
+addEventListener('pointerup',()=>dn=false);
+const aim=c=>{rc.ray.origin.setFromMatrixPosition(c.matrixWorld);rc.ray.direction.set(0,0,-1).applyMatrix4(new THREE.Matrix4().extractRotation(c.matrixWorld))};
+const ctl=[0,1].map(i=>{const c=r.xr.getController(i);c.userData.d=false;
   c.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3(0,0,-1.5)]),new THREE.LineBasicMaterial({color:0x3fd0b0})));
-  c.addEventListener('select',()=>{rc.ray.origin.setFromMatrixPosition(c.matrixWorld);rc.ray.direction.set(0,0,-1).applyMatrix4(new THREE.Matrix4().extractRotation(c.matrixWorld));tap()});
-  scene.add(c)});
+  c.addEventListener('selectstart',()=>{c.userData.d=true;aim(c);act(true,true)});
+  c.addEventListener('selectend',()=>c.userData.d=false);scene.add(c);return c});
+const hf=new XRHandModelFactory();
+[0,1].forEach(i=>{const h=r.xr.getHand(i);h.add(hf.createHandModel(h,'spheres'));scene.add(h)});
 
-r.xr.addEventListener('sessionstart',()=>{scene.background=null;oc.enabled=false;rig.scale.setScalar(.22);rig.position.set(0,-.05,-.7)});
-r.xr.addEventListener('sessionend',()=>{scene.background=BG;oc.enabled=true;rig.scale.setScalar(1);rig.position.set(0,0,0)});
-document.body.appendChild(ARButton.createButton(r,{optionalFeatures:['dom-overlay'],domOverlay:{root:document.body}}));
+r.xr.addEventListener('sessionstart',()=>{scene.background=null;oc.enabled=false;rig.scale.setScalar(.22);rig.position.set(0,-.1,-.8);tip.scale.setScalar(.2)});
+r.xr.addEventListener('sessionend',()=>{scene.background=BG;oc.enabled=true;rig.scale.setScalar(1);rig.position.set(0,0,0);tip.scale.setScalar(1)});
+document.body.appendChild(ARButton.createButton(r,{optionalFeatures:['hand-tracking','dom-overlay'],domOverlay:{root:document.body}}));
 
 $('#org').onchange=e=>load(e.target.value);
 $('#op').oninput=applyOp;$('#hint').onchange=ui;$('#reset').onclick=()=>load(key);
 addEventListener('resize',()=>{cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();r.setSize(innerWidth,innerHeight)});
 
-load('rim');
+// ---------- controle Xbox (Gamepad API) ----------
+const TOOLS=['bisturi','pinca','laser','ponteiro'];
+// controle virtual (celular/tablet): joystick move o cursor, A usa, ◀ ▶ trocam a ferramenta
+let vg=null;
+if(matchMedia('(pointer:coarse)').matches){
+  vg={axes:[0,0,0,0],buttons:Array.from({length:16},()=>({pressed:false,value:0}))};
+  const mk=(css,txt)=>{const e=document.createElement('div');
+    e.style.cssText='position:fixed;touch-action:none;user-select:none;display:flex;align-items:center;justify-content:center;color:#e8f1f0;background:#14262dcc;border:2px solid #3fd0b0;border-radius:50%;font:600 22px sans-serif;'+css;
+    e.textContent=txt;document.body.appendChild(e);return e};
+  const base=mk('left:20px;bottom:90px;width:130px;height:130px;','');
+  const knob=document.createElement('div');knob.style.cssText='width:56px;height:56px;border-radius:50%;background:#3fd0b0;pointer-events:none';base.appendChild(knob);
+  const stick=e=>{const b=base.getBoundingClientRect(),x=(e.clientX-b.left-65)/50,y=(e.clientY-b.top-65)/50,m=Math.hypot(x,y)||1,k=Math.min(1,m)/m;
+    vg.axes[0]=x*k;vg.axes[1]=y*k;knob.style.transform=`translate(${x*k*35}px,${y*k*35}px)`};
+  const rel=()=>{vg.axes[0]=vg.axes[1]=0;knob.style.transform=''};
+  base.addEventListener('pointerdown',e=>{base.setPointerCapture(e.pointerId);stick(e)});
+  base.addEventListener('pointermove',e=>{if(e.buttons)stick(e)});
+  base.addEventListener('pointerup',rel);base.addEventListener('pointercancel',rel);
+  const hold=(el,i)=>{el.addEventListener('pointerdown',()=>{vg.buttons[i]={pressed:true,value:1}});
+    const up=()=>{vg.buttons[i]={pressed:false,value:0}};el.addEventListener('pointerup',up);el.addEventListener('pointercancel',up)};
+  hold(mk('right:20px;bottom:90px;width:100px;height:100px;font-size:30px','A'),0);
+  hold(mk('right:140px;bottom:90px;width:64px;height:64px;','◀'),4);
+  hold(mk('right:140px;bottom:164px;width:64px;height:64px;','▶'),5);
+}
+const cur=document.createElement('div');
+cur.style.cssText='position:fixed;width:20px;height:20px;margin:-10px;border:2px solid #3fd0b0;border-radius:50%;pointer-events:none;display:none';
+document.body.appendChild(cur);
+let cx=.3,cy=0,pv=[];
+function pad(){
+  const g=[...navigator.getGamepads()].find(x=>x)||vg;if(!g||r.xr.isPresenting)return;
+  const d=v=>Math.abs(v)>.15?v:0,bt=i=>g.buttons[i]&&g.buttons[i].pressed,edge=i=>bt(i)&&!pv[i];
+  cx=Math.max(-1,Math.min(1,cx+d(g.axes[0])*.03));cy=Math.max(-1,Math.min(1,cy+d(g.axes[1])*.03));
+  cur.style.display='block';cur.style.left=(cx+1)/2*innerWidth+'px';cur.style.top=(cy+1)/2*innerHeight+'px';
+  const o=cam.position.clone().sub(oc.target),sp=new THREE.Spherical().setFromVector3(o);
+  sp.theta-=d(g.axes[2])*.03;sp.phi=Math.min(3,Math.max(.2,sp.phi+d(g.axes[3])*.03));
+  sp.radius=Math.max(1.5,sp.radius+((g.buttons[6]?g.buttons[6].value:0)-(g.buttons[7]?g.buttons[7].value:0))*.08);
+  cam.position.copy(oc.target).add(o.setFromSpherical(sp));
+  if(edge(5))pick(TOOLS[(TOOLS.indexOf(tool)+1)%4]);
+  if(edge(4))pick(TOOLS[(TOOLS.indexOf(tool)+3)%4]);
+  if(edge(1))load(key);
+  rc.setFromCamera(new THREE.Vector2(cx,-cy),cam);
+  act(bt(0),edge(0));
+  pv=g.buttons.map(b=>b.pressed)}
+
+paint();load('rim');
 r.setAnimationLoop(t=>{
-  const st=ORG[key].st;if(step<st.length){const m=tg[st[step].t];m.scale.setScalar(1+.25*Math.sin(t/200))}
+  pad();
+  const st=ORG[key].st;if(step<st.length)tg[st[step].t].scale.setScalar(1+.25*Math.sin(t/200));
+  if(r.xr.isPresenting)ctl.forEach(c=>{aim(c);act(c.userData.d,false)});
   oc.update();r.render(scene,cam)});
 </script>
 </body>
